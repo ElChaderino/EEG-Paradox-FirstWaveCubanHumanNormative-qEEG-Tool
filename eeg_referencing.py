@@ -49,16 +49,15 @@ class EEGReReferencing:
         # Frequency configuration (49 points from 0.39 to 19.11 Hz)
         self.frequencies = np.linspace(0.39, 19.11, 49)
         
-        # Clinical frequency bands
+        # Clinical frequency bands - ADJUSTED to match Cuban database range (0.39-19.11 Hz)
         self.frequency_bands = {
-            'delta': (0.5, 3.5),
-            'theta': (4.0, 7.5),
-            'alpha': (8.0, 12.0),
-            'beta1': (12.5, 15.5),
-            'beta2': (15.5, 18.5),
-            'beta3': (18.5, 21.5),
-            'beta4': (21.5, 30.0),
-            'gamma': (30.0, 44.0)
+            'delta': (0.5, 3.5),           # Delta waves
+            'theta': (4.0, 7.5),           # Theta waves
+            'alpha': (8.0, 12.0),          # Alpha waves
+            'smr': (12.0, 15.0),           # Sensory Motor Rhythm (SMR)
+            'beta1': (15.0, 18.0),         # Low Beta
+            'beta2': (18.0, 19.11),        # High Beta (limited by Cuban database)
+            'beta': (12.0, 19.11)          # Combined Beta band (limited by Cuban database)
         }
         
         # Transformation matrix for Linked Ears to Average Reference
