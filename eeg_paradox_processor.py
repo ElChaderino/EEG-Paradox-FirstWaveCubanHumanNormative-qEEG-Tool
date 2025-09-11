@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 EEG Paradox Rapid Reporter - Cuban Normative Database Processor
-Enhanced for Clinical QEEG Analysis (Jay Gunkelman & Mark Jones & Jay Gattis Inspired)
+Enhanced for Clinical QEEG Analysis (Jay Gunkelman & Mark Jones Standards)
 Processes Cuban EEG normative data to create comprehensive clinical QEEG database
 """
 
@@ -36,25 +36,24 @@ class CubanEEGProcessor:
             'O1', 'O2'
         ]
         
-        # Enhanced frequency bands (clinical QEEG standard)
+        # Enhanced frequency bands (clinical QEEG standard) - ADJUSTED to match Cuban database range
         self.freq_bands = {
-            'delta': (0.5, 3.5),
-            'theta': (4.0, 7.5),
-            'alpha': (8.0, 12.0),
-            'beta1': (12.5, 15.5),
-            'beta2': (15.5, 18.5),
-            'beta3': (18.5, 21.5),
-            'beta4': (21.5, 30.0),
-            'gamma': (30.0, 44.0)
+            'delta': (0.5, 3.5),           # Delta waves
+            'theta': (4.0, 7.5),           # Theta waves
+            'alpha': (8.0, 12.0),          # Alpha waves
+            'smr': (12.0, 15.0),           # Sensory Motor Rhythm (SMR)
+            'beta1': (15.0, 18.0),         # Low Beta
+            'beta2': (18.0, 19.11),        # High Beta (limited by Cuban database)
+            'beta': (12.0, 19.11)          # Combined Beta band (limited by Cuban database)
         }
         
-        # Clinical frequency bands (Gunkelman/Jones standard)
+        # Clinical frequency bands (Gunkelman/Jones standard) - REORGANIZED with SMR
         self.clinical_bands = {
-            'delta': (0.5, 3.5),
-            'theta': (4.0, 7.5),
-            'alpha': (8.0, 12.0),
-            'beta': (12.5, 30.0),
-            'gamma': (30.0, 44.0)
+            'delta': (0.5, 3.5),           # Delta waves
+            'theta': (4.0, 7.5),           # Theta waves
+            'alpha': (8.0, 12.0),          # Alpha waves
+            'smr': (12.0, 15.0),           # Sensory Motor Rhythm (SMR)
+            'beta': (12.0, 19.11)          # Combined Beta band (limited by Cuban database)
         }
         
         # Frequencies from 0.39 to 19.11 Hz (49 points)
@@ -235,7 +234,7 @@ class CubanEEGProcessor:
         
         # 3. Theta/Beta Ratio (clinical standard)
         theta_power = np.mean(power_spectra[:, np.where((self.frequencies >= 4.0) & (self.frequencies <= 7.5))[0]], axis=1)
-        beta_power = np.mean(power_spectra[:, np.where((self.frequencies >= 12.5) & (self.frequencies <= 30.0))[0]], axis=1)
+        beta_power = np.mean(power_spectra[:, np.where((self.frequencies >= 12.5) & (self.frequencies <= 19.11))[0]], axis=1)
         
         theta_beta_ratio = np.divide(theta_power, beta_power, out=np.full_like(theta_power, np.nan), where=beta_power != 0)
         clinical_metrics['theta_beta_ratio'] = theta_beta_ratio
@@ -441,13 +440,18 @@ class CubanEEGProcessor:
         print(f"✅ Created normative database for {len(self.normative_data)} age groups")
     
     def _get_age_group(self, age):
-        """Group ages into appropriate categories"""
+        """Group ages into appropriate categories - Fixed logic"""
         if age <= 15:
-            return f"{age//1*1}-{(age//1+1)*1-0.1}"
+            # Single year groups for children
+            return f"{int(age)}-{int(age)+1}"
         elif age <= 19:
-            return f"{age//2*2}-{(age//2+1)*2-0.1}"
+            # Two-year groups for adolescents
+            group_start = (int(age) // 2) * 2
+            return f"{group_start}-{group_start + 2}"
         else:
-            return f"{age//5*5}-{(age//5+1)*5-0.1}"
+            # Five-year groups for adults
+            group_start = (int(age) // 5) * 5
+            return f"{group_start}-{group_start + 5}"
     
     def calculate_z_scores(self, subject_data, condition='EC'):
         """Calculate z-scores for a subject relative to age-matched normative data"""
@@ -1281,7 +1285,7 @@ class CubanEEGProcessor:
 def main():
     """Main processing function"""
     print("🚀 EEG Paradox Rapid Reporter - Clinical QEEG Database Processor")
-    print("Enhanced for Jay Gunkelman & Mark Jones Clinical Standards")
+    print("Inspired By Jay Gunkelman, Mark Jones, Jay Gattis, And many others")
     print("=" * 80)
     
     # Initialize processor
@@ -1343,5 +1347,4 @@ def main():
     return processor, z_score_df, clinical_summary_df, normative_df
 
 if __name__ == "__main__":
-
     processor, z_scores, clinical_summary, normative = main()
