@@ -1,8 +1,36 @@
 #!/usr/bin/env python3
 """
 Enhanced Topographical Map Module for EEG Clinical Analysis
-CLINICAL GRADE VERSION — Matches NeuroGuide/ClinicalQ standards
+
+This is EXPERIMENTAL SOFTWARE for research and educational purposes only.
+NOT intended for clinical diagnosis without proper validation and oversight.
+
+Copyright (C) 2025 EEG Paradox Clinical System Contributors
+Licensed under GNU General Public License v3.0
+
+Enhanced topographical mapping for EEG Paradox Cuban Normative Database QEEG Analysis.
 """
+
+# EEG Paradox Clinical System - GPL v3.0 License
+# Copyright (C) 2025 EEG Paradox Clinical System Contributors
+# 
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+# ⚠️  PROTOTYPE WARNING ⚠️
+# This is EXPERIMENTAL SOFTWARE developed for research and educational purposes.
+# NOT intended for clinical diagnosis or patient treatment without proper
+# validation, regulatory approval, and qualified healthcare professional oversight.
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -245,7 +273,7 @@ def clean_channel_name(name):
     name = str(name).strip()
     
     # Remove suffixes first
-    for suffix in ['-LE', '-RE', '-REF', '-M1', '-M2', '-A1', '-A2']:
+    for suffix in ['-LE', '-RE', '-REF', '-M1', '-M2', '-A1', '-A2', '-Av', '-AV']:
         name = name.replace(suffix, '')
     
     # Convert to uppercase for processing
@@ -286,28 +314,46 @@ def get_clinical_positions(channel_names):
 def clinical_interpolation(values, positions, resolution=128):
     """
     High-quality clinical interpolation matching NeuroGuide standards
+    FIXED: Extended grid to include all edge electrodes (T5/P7, T6/P8)
     """
-    # Create high-resolution grid that matches plot limits exactly
-    xi = np.linspace(-1.3, 1.3, resolution)
-    yi = np.linspace(-1.3, 1.3, resolution)
+    # Create extended high-resolution grid to include all edge electrodes
+    # Extended range to ensure T5/P7 (-0.71, -0.31) and T6/P8 (0.71, -0.31) are included
+    xi = np.linspace(-1.5, 1.5, resolution)  # Extended from -1.3 to -1.5
+    yi = np.linspace(-1.5, 1.5, resolution)  # Extended from -1.3 to -1.5
     Xi, Yi = np.meshgrid(xi, yi)
     
-    # Create circular mask (clinical head shape)
-    mask = np.sqrt(Xi**2 + Yi**2) <= 1.0
+    # Create circular mask (clinical head shape) - slightly larger to include edge electrodes
+    mask = np.sqrt(Xi**2 + Yi**2) <= 1.1  # Extended from 1.0 to 1.1
     
-    # Interpolate using cubic method (clinical standard)
-    Zi = griddata(positions, values, (Xi, Yi), method='cubic', fill_value=0)
+    # Interpolate using cubic method with extrapolation for edge electrodes
+    # Use 'nearest' method for extrapolation to handle edge electrodes properly
+    Zi = griddata(positions, values, (Xi, Yi), method='cubic', fill_value=np.nan)
     
-    # Apply circular mask
-    Zi[~mask] = 0
+    # Fill NaN values using nearest neighbor extrapolation (critical for edge electrodes)
+    from scipy.spatial.distance import cdist
+    if np.any(np.isnan(Zi)):
+        # Find NaN positions
+        nan_mask = np.isnan(Zi)
+        if np.any(nan_mask):
+            # Get coordinates of NaN points
+            nan_coords = np.column_stack([Xi[nan_mask], Yi[nan_mask]])
+            # Find nearest electrode for each NaN point
+            distances = cdist(nan_coords, positions)
+            nearest_indices = np.argmin(distances, axis=1)
+            # Fill with nearest electrode values
+            Zi[nan_mask] = values[nearest_indices]
+    
+    # Apply circular mask (but keep edge electrode data)
+    Zi[~mask] = np.nan  # Use NaN for transparent background (no color bleeding)
     
     return Xi, Yi, Zi
 
 def plot_clean_topomap(data, info, title='', cmap=DEFAULT_CMAP, vlim=DEFAULT_VLIM, 
                        show_sensors=True, contours=True, head_outline=True, is_zscore=False, 
-                       paradox_theme=True, label_mode='auto'):
+                       paradox_theme=True, label_mode='auto', frequency_band='', condition=''):
     """
     Plot a clinical-grade topomap matching NeuroGuide/ClinicalQ standards
+    Enhanced for EEG Paradox Cuban Normative Database QEEG Analysis
     
     Args:
         data: 1D array of values (must match EEG channels in info)
@@ -319,6 +365,9 @@ def plot_clean_topomap(data, info, title='', cmap=DEFAULT_CMAP, vlim=DEFAULT_VLI
         contours: Whether to show contour lines
         head_outline: Whether to show head outline
         is_zscore: Whether values are z-scores (affects color scaling)
+        paradox_theme: Use EEG Paradox dark theme styling
+        frequency_band: Frequency band label for clinical clarity
+        condition: Condition label (EC/EO) for clinical clarity
     """
     # Validate input
     if not isinstance(data, np.ndarray):
@@ -373,7 +422,8 @@ def plot_clean_topomap(data, info, title='', cmap=DEFAULT_CMAP, vlim=DEFAULT_VLI
     if vmax <= vmin:
         vmax = vmin + 1e-6
     
-    levels = np.linspace(vmin, vmax, 20)
+    # Reduced color levels for better clinical assessment (8 levels instead of 20)
+    levels = np.linspace(vmin, vmax, 8)
     # Ensure levels are strictly increasing
     levels = np.unique(levels)
     if len(levels) < 2:
@@ -382,10 +432,10 @@ def plot_clean_topomap(data, info, title='', cmap=DEFAULT_CMAP, vlim=DEFAULT_VLI
     contour_filled = ax.contourf(Xi, Yi, Zi, levels=levels, cmap=cmap, 
                                 vmin=vmin, vmax=vmax, extend='both')
     
-    # Add clinical contour lines
+    # Add clinical contour lines (reduced from 10 to 5 for clarity)
     if contours:
         line_col = '#000' if not paradox_theme else '#1a2a44'
-        contour_lines = ax.contour(Xi, Yi, Zi, levels=10, colors=line_col, 
+        contour_lines = ax.contour(Xi, Yi, Zi, levels=5, colors=line_col, 
                                   linewidths=0.6, alpha=0.7, zorder=4)
     
     # Draw clinical head outline
@@ -448,16 +498,46 @@ def plot_clean_topomap(data, info, title='', cmap=DEFAULT_CMAP, vlim=DEFAULT_VLI
             if pos[0] > 1.3 or pos[0] < -1.3 or pos[1] > 1.3 or pos[1] < -1.3:
                 artist.remove()
     
-    ax.set_title(title, color=txt_color, fontsize=18, fontweight='bold', pad=18,
+    # Add frequency band and condition labels (FIXED: Critical for clinical clarity)
+    if frequency_band or condition:
+        label_text = ""
+        if frequency_band:
+            label_text += f"{frequency_band}"
+        if condition:
+            if label_text:
+                label_text += f" - {condition}"
+            else:
+                label_text = condition
+        
+        # Position label in top-left corner, avoiding electrode markers
+        ax.text(-1.2, 1.0, label_text, fontsize=12, fontweight='bold', 
+                color=txt_color, ha='left', va='top',
+                bbox=dict(boxstyle='round,pad=0.3', facecolor=CYBER_BG if paradox_theme else 'black', 
+                         alpha=0.8, edgecolor=txt_color, linewidth=1),
+                path_effects=_halo(lw=3.0, color=CYBER_BG, alpha=0.9) if paradox_theme else None,
+                zorder=10)
+    
+    # Enhanced title with frequency and condition information
+    if frequency_band and condition:
+        enhanced_title = f"{title}\n{frequency_band} - {condition}"
+    elif frequency_band:
+        enhanced_title = f"{title}\n{frequency_band}"
+    elif condition:
+        enhanced_title = f"{title}\n{condition}"
+    else:
+        enhanced_title = title
+    
+    ax.set_title(enhanced_title, color=txt_color, fontsize=18, fontweight='bold', pad=18,
                  path_effects=_halo(lw=6.0, color=CYBER_BG, alpha=1.0) if paradox_theme else None)
     
     plt.tight_layout()
     logger.info(f"Created clinical topomap with {len(valid_channels)} channels")
     return fig
 
-def create_clinicalQ_grid(site_metrics, title="ClinicalQ Analysis"):
+def create_clinicalQ_grid(site_metrics, title="EEG Paradox ClinicalQ Analysis"):
     """
-    Create a professional, readable ClinicalQ analysis report
+    Create a clean, professional ClinicalQ analysis report with proper spacing
+    Enhanced for EEG Paradox Cuban Normative Database QEEG Analysis
     
     Args:
         site_metrics: list of dicts like:
@@ -471,53 +551,65 @@ def create_clinicalQ_grid(site_metrics, title="ClinicalQ Analysis"):
     import matplotlib.pyplot as plt
     import matplotlib.patches as patches
     
-    # Create larger figure for better readability
-    fig, ax = plt.subplots(figsize=(16, 10))
-    fig.patch.set_facecolor(CYBER_BG)
-    ax.set_facecolor(CYBER_BG)
+    # Create figure with proper size
+    fig, ax = plt.subplots(figsize=(24, 16), facecolor='black')
+    ax.set_facecolor('black')
     
     # Organize data by metric and site
     sites = sorted({d['site'] for d in site_metrics})
     metrics = sorted({d['metric'] for d in site_metrics})
     
-    # Create professional table layout
-    row_height = 1.2
-    col_width = 2.4
-    start_y = len(metrics) * row_height
+    # Clean layout parameters - much more reasonable
+    cell_width = 2.5
+    cell_height = 1.8
+    header_height = 1.0
+    left_margin = 3.0
     
-    # Title
-    ax.text(len(sites) * col_width / 2, start_y + 0.8, title, 
-            ha='center', va='center', color=CYBER_FG, fontsize=20, fontweight='bold',
-            path_effects=_halo(lw=6.0, color=CYBER_BG, alpha=1.0))
+    # Calculate total dimensions
+    total_width = left_margin + len(sites) * cell_width
+    total_height = header_height + len(metrics) * cell_height + 2.0  # Extra space for legend
+    
+    # Draw grid lines for clarity
+    # Vertical lines
+    for i in range(len(sites) + 1):
+        x = left_margin + i * cell_width
+        ax.axvline(x, color='#333333', linewidth=0.5, alpha=0.7)
+    
+    # Horizontal lines
+    for i in range(len(metrics) + 2):  # +2 for header and legend
+        y = total_height - header_height - i * cell_height
+        ax.axhline(y, color='#333333', linewidth=0.5, alpha=0.7)
+    
+    # Title - moved above site headers for better visibility
+    ax.text(total_width / 2, total_height - 0.3, title, 
+            ha='center', va='center', color='#00e5ff', fontsize=20, fontweight='bold')
     
     # Headers - Sites
     for i, site in enumerate(sites):
-        x = i * col_width + col_width/2
-        y = start_y + 0.2
+        x = left_margin + i * cell_width + cell_width/2
+        y = total_height - header_height/2
         
         # Site header background
-        rect = patches.Rectangle((i * col_width + 0.1, start_y - 0.1), 
-                                col_width - 0.2, 0.6, 
-                                facecolor='#1a2a44', edgecolor=NEON_CYAN, 
-                                linewidth=1.5, alpha=0.8)
+        rect = patches.Rectangle((left_margin + i * cell_width, total_height - header_height), 
+                                cell_width, header_height, 
+                                facecolor='#1a2a44', edgecolor='#00e5ff', 
+                                linewidth=1, alpha=0.8)
         ax.add_patch(rect)
         
         ax.text(x, y, site, ha='center', va='center', 
-                color=NEON_CYAN, fontsize=14, fontweight='bold',
-                path_effects=_halo(lw=3.0, color=CYBER_BG, alpha=1.0))
+                color='#00e5ff', fontsize=14, fontweight='bold')
     
     # Data rows
     for row, metric in enumerate(metrics):
-        y = start_y - (row + 1) * row_height
+        y = total_height - header_height - (row + 0.5) * cell_height
         
         # Metric label
-        ax.text(-0.3, y, metric, ha='right', va='center', 
-                color=CYBER_FG, fontsize=12, fontweight='bold',
-                path_effects=_halo(lw=2.5, color=CYBER_BG, alpha=1.0))
+        ax.text(left_margin/2, y, metric.replace('_power', '').upper(), 
+                ha='center', va='center', color='#ffffff', fontsize=12, fontweight='bold')
         
         # Data cells
         for col, site in enumerate(sites):
-            x = col * col_width + col_width/2
+            x = left_margin + col * cell_width + cell_width/2
             
             # Find data for this metric/site combination
             site_data = next((d for d in site_metrics 
@@ -529,93 +621,94 @@ def create_clinicalQ_grid(site_metrics, title="ClinicalQ Analysis"):
                 
                 # Determine colors and badge
                 if abs(z_score) >= 2.58:
-                    bg_color = NEON_RED
+                    bg_color = '#8B0000'  # Dark red
                     badge = 'SEVERE'
                     text_color = 'white'
                 elif abs(z_score) >= 2.0:
-                    bg_color = NEON_ORANGE
+                    bg_color = '#FF8C00'  # Dark orange
                     badge = 'ABNORMAL'
-                    text_color = 'black'
+                    text_color = 'white'
                 elif abs(z_score) >= 1.5:
-                    bg_color = NEON_YELLOW
+                    bg_color = '#DAA520'  # Goldenrod
                     badge = 'BORDERLINE'
                     text_color = 'black'
                 else:
-                    bg_color = '#90EE90'
+                    bg_color = '#228B22'  # Forest green
                     badge = 'NORMAL'
-                    text_color = 'black'
+                    text_color = 'white'
                 
-                # Cell background with neon glow
-                rect = patches.Rectangle((col * col_width + 0.1, y - row_height/2 + 0.1), 
-                                        col_width - 0.2, row_height - 0.2, 
-                                        facecolor=bg_color, alpha=0.3, 
-                                        edgecolor=bg_color, linewidth=2)
+                # Cell background
+                rect = patches.Rectangle((left_margin + col * cell_width, 
+                                        total_height - header_height - (row + 1) * cell_height), 
+                                        cell_width, cell_height, 
+                                        facecolor=bg_color, alpha=0.6, 
+                                        edgecolor=bg_color, linewidth=1)
                 ax.add_patch(rect)
                 
-                # Value text (larger, more readable)
-                ax.text(x, y + 0.15, f"{value:.2f}", ha='center', va='center', 
-                        color=CYBER_FG, fontsize=16, fontweight='bold',
-                        path_effects=_halo(lw=3.0, color=CYBER_BG, alpha=1.0))
+                # Value text (top of cell)
+                ax.text(x, y + 0.4, f"{value:.1f}", ha='center', va='center', 
+                        color=text_color, fontsize=11, fontweight='bold')
                 
-                # Z-score text
-                ax.text(x, y - 0.05, f"z = {z_score:.2f}", ha='center', va='center', 
-                        color=CYBER_FG, fontsize=12, fontweight='normal',
-                        path_effects=_halo(lw=2.5, color=CYBER_BG, alpha=1.0))
+                # Z-score text (middle of cell)
+                ax.text(x, y, f"z={z_score:.1f}", ha='center', va='center', 
+                        color=text_color, fontsize=12, fontweight='normal')
                 
-                # Badge
-                ax.text(x, y - 0.25, badge, ha='center', va='center', 
-                        color=bg_color, fontsize=10, fontweight='bold',
-                        path_effects=_halo(lw=3.0, color=CYBER_BG, alpha=1.0))
-                
-        else:
+                # Badge (bottom of cell)
+                ax.text(x, y - 0.4, badge, ha='center', va='center', 
+                        color=text_color, fontsize=9, fontweight='bold')
+            else:
                 # Empty cell
-                rect = patches.Rectangle((col * col_width + 0.1, y - row_height/2 + 0.1), 
-                                        col_width - 0.2, row_height - 0.2, 
-                                        facecolor='gray', alpha=0.2, 
-                                        edgecolor='gray', linewidth=1)
+                rect = patches.Rectangle((left_margin + col * cell_width, 
+                                        total_height - header_height - (row + 1) * cell_height), 
+                                        cell_width, cell_height, 
+                                        facecolor='#333333', alpha=0.3, 
+                                        edgecolor='#666666', linewidth=1)
                 ax.add_patch(rect)
+                
                 ax.text(x, y, 'N/A', ha='center', va='center', 
-                        color='gray', fontsize=12, style='italic')
+                        color='#888888', fontsize=12, style='italic')
     
-    # Legend (moved to bottom for better layout)
-    legend_y = -0.8
+    # Legend
+    legend_y = 1.0
     legend_items = [
-        ('NORMAL', '#90EE90', '<1.5σ'),
-        ('BORDERLINE', NEON_YELLOW, '≥1.5σ'),
-        ('ABNORMAL', NEON_ORANGE, '≥2.0σ'),
-        ('SEVERE', NEON_RED, '≥2.58σ')
+        ('NORMAL', '#228B22', '<1.5σ'),
+        ('BORDERLINE', '#DAA520', '≥1.5σ'),
+        ('ABNORMAL', '#FF8C00', '≥2.0σ'),
+        ('SEVERE', '#8B0000', '≥2.58σ')
     ]
     
-    ax.text(len(sites) * col_width / 2, legend_y - 0.3, 'Clinical Significance Levels', 
-            ha='center', va='center', color=CYBER_FG, fontsize=14, fontweight='bold',
-            path_effects=_halo(lw=4.0, color=CYBER_BG, alpha=1.0))
+    ax.text(total_width / 2, legend_y + 0.3, 'Clinical Significance Levels', 
+            ha='center', va='center', color='#00e5ff', fontsize=14, fontweight='bold')
     
     for i, (label, color, threshold) in enumerate(legend_items):
-        x = i * 3.5 + 1.5
+        x = left_margin + i * cell_width + cell_width/2
         
         # Legend box
-        rect = patches.Rectangle((x - 0.4, legend_y - 0.15), 0.8, 0.3, 
-                                facecolor=color, alpha=0.4, 
-                                edgecolor=color, linewidth=2)
+        rect = patches.Rectangle((left_margin + i * cell_width + 0.1, legend_y - 0.2), 
+                                cell_width - 0.2, 0.4, 
+                                facecolor=color, alpha=0.6, 
+                                edgecolor=color, linewidth=1)
         ax.add_patch(rect)
         
         ax.text(x, legend_y, f"{label}\n{threshold}", ha='center', va='center', 
-                color=color, fontsize=10, fontweight='bold',
-                path_effects=_halo(lw=2.5, color=CYBER_BG, alpha=1.0))
+                color='white', fontsize=12, fontweight='bold')
     
     # Set limits and remove axes
-    ax.set_xlim(-1, len(sites) * col_width)
-    ax.set_ylim(legend_y - 0.6, start_y + 1.2)
+    ax.set_xlim(0, total_width)
+    ax.set_ylim(0, total_height)
     ax.axis('off')
     
     plt.tight_layout()
-    logger.info(f"Created professional ClinicalQ report with {len(metrics)} metrics and {len(sites)} sites")
+    logger.info(f"Created clean ClinicalQ report with {len(metrics)} metrics and {len(sites)} sites")
     return fig
 
 # ========== SPECIALIZED FUNCTIONS ==========
 
-def create_zscore_topomap(z_scores, channel_names, title, clinical_thresholds=True):
-    """Create Z-score topomap with clinical significance indicators"""
+def create_zscore_topomap(z_scores, channel_names, title, clinical_thresholds=True, frequency_band='', condition=''):
+    """
+    Create Z-score topomap with clinical significance indicators
+    Enhanced for EEG Paradox Cuban Normative Database QEEG Analysis
+    """
     try:
         # Clean channel names
         clean_names = [clean_channel_name(name) for name in channel_names]
@@ -636,7 +729,9 @@ def create_zscore_topomap(z_scores, channel_names, title, clinical_thresholds=Tr
             contours=True,
             head_outline=True,
             is_zscore=True,  # Enables clinical z-score scaling
-            paradox_theme=True
+            paradox_theme=True,
+            frequency_band=frequency_band,
+            condition=condition
         )
         
         if clinical_thresholds and fig is not None:
@@ -652,7 +747,10 @@ def create_zscore_topomap(z_scores, channel_names, title, clinical_thresholds=Tr
 
 def create_clinical_topomap_grid(values_dict, channel_names, condition='Unknown', 
                                 clinical_analysis=True, z_scores_dict=None):
-    """Create a grid of clinical topographical maps"""
+    """
+    Create a grid of clinical topographical maps
+    Enhanced for EEG Paradox Cuban Normative Database QEEG Analysis
+    """
     try:
         logger.info(f"Creating clinical grid with {len(values_dict)} metrics")
         
@@ -739,8 +837,8 @@ def create_clinical_topomap_grid(values_dict, channel_names, condition='Unknown'
                     if vmax <= vmin:
                         vmax = vmin + 1e-6
                     
-                    # Create contour plot
-                    levels = np.linspace(vmin, vmax, 15)
+                    # Create contour plot (reduced levels for better clinical assessment)
+                    levels = np.linspace(vmin, vmax, 6)
                     levels = np.unique(levels)
                     if len(levels) < 2:
                         levels = np.array([vmin, vmax])
@@ -814,7 +912,10 @@ def create_clinical_topomap_grid(values_dict, channel_names, condition='Unknown'
 def create_professional_topomap(values, channel_names, title, cmap='viridis', 
                                show_sensors=True, show_contours=True, 
                                clinical_indicators=False, clinical_thresholds=None):
-    """Create a professional QEEG-style topographical brain map"""
+    """
+    Create a professional QEEG-style topographical brain map
+    Enhanced for EEG Paradox Cuban Normative Database QEEG Analysis
+    """
     try:
         # Clean channel names
         clean_names = [clean_channel_name(name) for name in channel_names]
@@ -886,23 +987,31 @@ def save_topomap(fig, filepath, dpi=300, facecolor='black'):
 # ========== TEST CALL (if standalone run) ==========
 
 if __name__ == "__main__":
-    # Dummy test with 19-channel dummy z-scores
+    # Test with 19-channel dummy z-scores for EEG Paradox Cuban Norm QEEG
+    print("🧠 EEG Paradox Enhanced Topomap Module - Test Mode")
+    print("=" * 60)
+    
     dummy_info = mne.create_info(ch_names=[
         'Fp1', 'Fp2', 'F7', 'F3', 'Fz', 'F4', 'F8',
         'T7', 'C3', 'Cz', 'C4', 'T8', 'P7', 'P3', 'Pz', 'P4', 'P8',
         'O1', 'O2'
     ], sfreq=256, ch_types='eeg')
 
+    # Simulate Cuban normative z-scores
     dummy_data = np.random.normal(0, 1, 19)
     ensure_montage(dummy_info)
     
-    print("Testing clean topomap creation...")
-    fig = plot_clean_topomap(dummy_data, dummy_info, title='Test Clean Topomap')
+    print("🔬 Testing EEG Paradox topomap creation...")
+    fig = plot_clean_topomap(dummy_data, dummy_info, 
+                           title='EEG Paradox Cuban Norm QEEG Test', 
+                           frequency_band='Alpha', 
+                           condition='EC')
     
     if fig:
         print("✅ Test successful! Saving test image...")
-        fig.savefig('test_clean_topomap.png', dpi=150, bbox_inches='tight', facecolor='black')
-        print("📁 Saved as: test_clean_topomap.png")
+        fig.savefig('test_eeg_paradox_topomap.png', dpi=150, bbox_inches='tight', facecolor='black')
+        print("📁 Saved as: test_eeg_paradox_topomap.png")
         plt.close(fig)
+        print("🎯 EEG Paradox Enhanced Topomap Module ready for Cuban Norm QEEG Analysis!")
     else:
         print("❌ Test failed!")
