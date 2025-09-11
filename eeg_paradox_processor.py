@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 EEG Paradox Rapid Reporter - Cuban Normative Database Processor
-Enhanced for Clinical QEEG Analysis (Jay Gunkelman & Mark Jones Standards)
+
 Processes Cuban EEG normative data to create comprehensive clinical QEEG database
 """
 
@@ -1285,7 +1285,7 @@ class CubanEEGProcessor:
 def main():
     """Main processing function"""
     print("🚀 EEG Paradox Rapid Reporter - Clinical QEEG Database Processor")
-    print("Inspired By Jay Gunkelman, Mark Jones, Jay Gattis, And many others")
+    print("Enhanced for Jay Gunkelman & Mark Jones Clinical Standards")
     print("=" * 80)
     
     # Initialize processor
