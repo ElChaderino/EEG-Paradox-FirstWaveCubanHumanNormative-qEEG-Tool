@@ -21,7 +21,7 @@ class ComprehensiveCubanDatabase:
     """
     Comprehensive Cuban Normative Database Loader and Manager
     
-    Manages the full 409-subject Cuban normative database with:
+    Manages the full 211-subject Cuban normative database with:
     - Individual subject cross-spectral matrices (19x19x49)
     - Age-stratified normative statistics
     - Complete coherence, asymmetry, and alpha peak databases
@@ -48,16 +48,15 @@ class ComprehensiveCubanDatabase:
         # Frequency configuration (49 points from 0.39 to 19.11 Hz)
         self.frequencies = np.linspace(0.39, 19.11, 49)
         
-        # Clinical frequency bands
+        # Clinical frequency bands - ADJUSTED to match Cuban database range (0.39-19.11 Hz)
         self.frequency_bands = {
-            'delta': (0.5, 3.5),
-            'theta': (4.0, 7.5),
-            'alpha': (8.0, 12.0),
-            'beta1': (12.5, 15.5),
-            'beta2': (15.5, 18.5),
-            'beta3': (18.5, 21.5),
-            'beta4': (21.5, 30.0),
-            'gamma': (30.0, 44.0)
+            'delta': (0.5, 3.5),           # Delta waves
+            'theta': (4.0, 7.5),           # Theta waves
+            'alpha': (8.0, 12.0),          # Alpha waves
+            'smr': (12.0, 15.0),           # Sensory Motor Rhythm (SMR)
+            'beta1': (15.0, 18.0),         # Low Beta
+            'beta2': (18.0, 19.11),        # High Beta (limited by Cuban database)
+            'beta': (12.0, 19.11)          # Combined Beta band (limited by Cuban database)
         }
         
         # Clinical significance thresholds
@@ -74,7 +73,7 @@ class ComprehensiveCubanDatabase:
     def columns(self):
         """Compatibility property for pandas DataFrame-like access"""
         # Return common column names that might be expected
-        return ['age', 'sex', 'delta', 'theta', 'alpha', 'beta', 'gamma']
+        return ['age', 'sex', 'delta', 'theta', 'alpha', 'beta']
     
     def __getitem__(self, key):
         """Enable DataFrame-like filtering for compatibility"""
@@ -88,7 +87,7 @@ class ComprehensiveCubanDatabase:
         class CompatibilityDataFrame:
             def __init__(self, db):
                 self.db = db
-                self.columns = ['delta', 'theta', 'alpha', 'beta', 'gamma']
+                self.columns = ['delta', 'theta', 'alpha', 'beta']
             
             def __getitem__(self, column):
                 # Return dummy data for compatibility
@@ -236,6 +235,43 @@ class ComprehensiveCubanDatabase:
         
         return best_match
     
+    def normalize_channel_name(self, channel_name: str) -> str:
+        """
+        Comprehensive channel name normalization to match Cuban database format
+        
+        Handles all common variations:
+        - FP1/FP2 -> Fp1/Fp2 (uppercase to mixed case)
+        - T3/T4 -> T7/T8 (old to new nomenclature)
+        - T5/T6 -> P7/P8 (old to new nomenclature)
+        - Case variations
+        """
+        # Remove common suffixes first
+        clean_name = channel_name.replace('-LE', '').replace('-RE', '').replace('-Av', '').replace('-AV', '')
+        
+        # Convert to uppercase for processing
+        name_upper = clean_name.upper()
+        
+        # Handle old to new nomenclature
+        replacements = {
+            'T3': 'T7',
+            'T4': 'T8', 
+            'T5': 'P7',
+            'T6': 'P8'
+        }
+        
+        for old, new in replacements.items():
+            if name_upper == old:
+                return new
+        
+        # Handle FP1/FP2 -> Fp1/Fp2 (special case for mixed case)
+        if name_upper == 'FP1':
+            return 'Fp1'
+        elif name_upper == 'FP2':
+            return 'Fp2'
+        
+        # For all other channels, return as-is (they should match)
+        return clean_name
+    
     def compute_precise_z_scores(self, patient_data: Dict[str, Any], patient_age: float, 
                                 patient_sex: str = 'unknown') -> Dict[str, np.ndarray]:
         """
@@ -285,13 +321,29 @@ class ComprehensiveCubanDatabase:
                 logger.info(f"🔍 Processing {band_name} band for {len(channel_names)} channels")
                 
                 # Check if we have normative data for this band
-                if band_name not in age_matched_normatives.get('band_powers_mean', {}):
-                    logger.warning(f"⚠️ No normative data found for {band_name} band")
+                # Handle band name variations (beta vs beta1+beta2, smr vs SMR, etc.)
+                band_key = band_name
+                if band_name == 'beta':
+                    # For combined beta, try beta1 and beta2
+                    if 'beta1' in age_matched_normatives.get('band_powers_mean', {}):
+                        band_key = 'beta1'  # Use beta1 as representative
+                        logger.info(f"   🔄 Using beta1 data for combined beta band")
+                    elif 'beta2' in age_matched_normatives.get('band_powers_mean', {}):
+                        band_key = 'beta2'  # Use beta2 as representative
+                        logger.info(f"   🔄 Using beta2 data for combined beta band")
+                elif band_name == 'smr':
+                    # SMR might be stored as beta1 or similar
+                    if 'beta1' in age_matched_normatives.get('band_powers_mean', {}):
+                        band_key = 'beta1'  # Use beta1 as SMR representative
+                        logger.info(f"   🔄 Using beta1 data for SMR band")
+                
+                if band_key not in age_matched_normatives.get('band_powers_mean', {}):
+                    logger.warning(f"⚠️ No normative data found for {band_name} band (tried {band_key})")
                     continue
                 
                 # Get pre-computed normative statistics for this band
-                norm_mean = age_matched_normatives['band_powers_mean'][band_name]  # Array(19 channels)
-                norm_std = age_matched_normatives['band_powers_std'][band_name]   # Array(19 channels)
+                norm_mean = age_matched_normatives['band_powers_mean'][band_key]  # Array(19 channels)
+                norm_std = age_matched_normatives['band_powers_std'][band_key]   # Array(19 channels)
                 
                 logger.info(f"✅ {band_name} band normative: mean range [{np.min(norm_mean):.6f}, {np.max(norm_mean):.6f}], std range [{np.min(norm_std):.6f}, {np.max(norm_std):.6f}]")
                 
@@ -317,9 +369,15 @@ class ComprehensiveCubanDatabase:
                     
                     if patient_value is not None:
                         # Find the channel index for this channel name
+                        # Handle channel name variations (FP1 vs Fp1, -Av suffix, etc.)
                         channel_idx = None
+                        # Remove -Av suffix and normalize channel names
+                        clean_channel = channel_name.replace('-Av', '').replace('-AV', '')
+                        # Comprehensive channel name normalization
+                        normalized_channel = self.normalize_channel_name(clean_channel)
+                        
                         for i, electrode in enumerate(self.electrodes):
-                            if electrode == channel_name:
+                            if electrode == normalized_channel or electrode == clean_channel:
                                 channel_idx = i
                                 break
                         
@@ -650,21 +708,31 @@ class ComprehensiveCubanDatabase:
                                         f'Band {band_name} has {zero_variance_count}/{len(std_data)} channels with zero variance'
                                     )
             
-            # Determine overall quality
-            if len(validation_results['problematic_bands']) == 0:
+            # Determine overall quality - ADJUSTED for Cuban database limitations
+            # No bands are expected to have zero variance after fixes
+            expected_zero_variance_bands = set()
+            actual_problematic_bands = [band for band in validation_results['problematic_bands'] 
+                                      if band not in expected_zero_variance_bands]
+            
+            if len(actual_problematic_bands) == 0:
                 validation_results['overall_quality'] = 'excellent'
-            elif len(validation_results['problematic_bands']) <= 2:
+            elif len(actual_problematic_bands) <= 2:
                 validation_results['overall_quality'] = 'good'
-            elif len(validation_results['problematic_bands']) <= 4:
+            elif len(actual_problematic_bands) <= 4:
                 validation_results['overall_quality'] = 'fair'
             else:
                 validation_results['overall_quality'] = 'poor'
                 
             # Add specific recommendations for zero variance bands
             for band_name in validation_results['problematic_bands']:
-                validation_results['recommendations'].append(
-                    f'For {band_name} band: Using cross-channel variance fallback and epsilon-based normalization'
-                )
+                if band_name in expected_zero_variance_bands:
+                    validation_results['recommendations'].append(
+                        f'Band {band_name}: Expected zero variance due to Cuban database 19.11 Hz limit - using fallback normalization'
+                    )
+                else:
+                    validation_results['recommendations'].append(
+                        f'Band {band_name}: Unexpected zero variance - using cross-channel variance fallback and epsilon-based normalization'
+                    )
                 
         except Exception as e:
             validation_results['overall_quality'] = 'error'
